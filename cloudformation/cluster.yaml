@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: indie.ninja API cluster definition
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t2.micro
+
+  ClusterSize:
+    Type: Number
+    Default: 2
+
+  StackName:
+    Type: String
+
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  ApplicationImageId:
+    Type: String
+
+Resources:
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: indie-ninja-cluster
+  AutoScalingLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          commands:
+            05_public_volume:
+              command: mkdir -p /data/public
+            06_public_volume_permissions:
+              command: chown -R 1000:1000 /data/public
+            10_first_run:
+              command: sh firstrun.sh
+              cwd: /home/ec2-user
+              env:
+                ECS_CLUSTER: !Ref Cluster
+                STACK_NAME: !Ref StackName
+                AUTOSCALING_GROUP: AutoScalingGroup
+                AWS_DEFAULT_REGION: !Ref AWS::Region
+    Properties:
+      ImageId: !Ref ApplicationImageId
+      InstanceType: t2.micro
+      KeyName: indie-ninja-keypair-09-2017
+      IamInstanceProfile: !Ref AutoScalingInstanceProfile
+      SecurityGroups:
+        - !Ref AutoScalingSecurityGroup
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} \
+              --resource AutoScalingLaunchConfiguration \
+              --region ${AWS::Region}
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} \
+              --resource AutoScalingGroup \
+              --region ${AWS::Region}
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+        MinInstancesInService: 1
+        MinSuccessfulInstancesPercent: 100
+        WaitOnResourceSignals: "true"
+        PauseTime: PT15M
+    Properties:
+      LaunchConfigurationName: !Ref AutoScalingLaunchConfiguration
+      MinSize: 0
+      MaxSize: 4
+      DesiredCapacity: 1
+      VPCZoneIdentifier: !Ref Subnets
+      Tags:
+        - Key: Name
+          Value: !Sub ${StackName}-ApplicationAutoScaling-instance
+          PropagateAtLaunch: "true"
+  AutoScalingInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: AutoScalingInstanceRole
+  ApplicationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /${StackName}/ecs/indie-ninja-api
+      RetentionInDays: 7
+  AutoScalingInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: ECSContainerInstancePermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RegisterContainerInstance
+                  - ecs:DeregisterContainerInstance
+                  - ecs:UpdateContainerInstancesState
+                Resource: !Sub ${Cluster.Arn}
+              - Effect: Allow
+                Action:
+                  - ecs:DiscoverPollEndpoint
+                  - ecs:Submit*
+                  - ecs:Poll
+                  - ecs:StartTelemetrySession
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*${StackName}*
+  AutoScalingSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${StackName} Application AutoScaling Security Group
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+Outputs:
+  ClusterName:
+    Value: !Ref Cluster
+
+  ClusterArn:
+    Value: !GetAtt Cluster.Arn
+
+  AutoScalingSecurityGroup:
+    Value: !Ref AutoScalingSecurityGroup
+
+  AutoScalingGroupName:
+    Value: !Ref AutoScalingGroup
+
+  ApplicationLogGroupName:
+    Value: !Ref ApplicationLogGroup

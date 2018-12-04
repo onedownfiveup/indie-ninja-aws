@@ -1,0 +1,3 @@
+= Cloudformation stack for indie.ninja environment =
+
+aws cloudformation deploy --template-file stack.yml --stack-name indie-ninja-api

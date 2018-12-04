@@ -1,0 +1,13 @@
+
+{
+  "Parameters": {
+    "ApplicationImageId": "ami-05a2eaeec75420d53",
+    "ApplicationEnv": "production",
+    "EcrRepositoryNamespace": "indie-ninja/indie-ninja-api",
+    "EcrRepositoryArn": "arn:aws:ecr:us-east-1:198079243873:repository/indie-ninja/indie-ninja-api",
+    "GitHubRepo": "indie-ninja-api",
+    "GitHubAwsRepo": "indie-ninja-aws",
+    "GitHubBranch": "master",
+    "GitHubUser": "onedownfiveup"
+  }
+}

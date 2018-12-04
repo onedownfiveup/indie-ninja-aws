@@ -1,0 +1,573 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: indie.ninja API
+
+Parameters:
+  ServiceName:
+    Type: String
+
+  ClusterName:
+    Type: String
+
+  ClusterArn:
+    Type: String
+
+  MigrateTaskArn:
+    Type: String
+
+  AutoScalingGroupName:
+    Type: String
+
+  ApplicationLogGroupName:
+    Type: String
+
+  LoadBalancerHttpListener:
+    Type: String
+
+  ApplicationTaskDefinitionArn:
+    Type: String
+
+  TargetGroupArn:
+    Type: String
+
+  DesiredCount:
+    Type: Number
+    Default: 1
+
+  StackName:
+    Type: String
+
+Resources:
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Ref ServiceName
+      TaskDefinition: !Ref ApplicationTaskDefinitionArn
+      Cluster: !Ref ClusterName
+      DesiredCount: !Ref DesiredCount
+      LoadBalancers:
+        - ContainerName: indie-ninja-api
+          ContainerPort: 8000
+          TargetGroupArn: !Ref TargetGroupArn
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+  ServiceAutoscalingScaleInPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: ScaleIn
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ServiceAutoscalingTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        Cooldown: 360
+        MetricAggregationType: Average
+        StepAdjustments:
+        - ScalingAdjustment: -1
+          MetricIntervalUpperBound: 0
+  ServiceAutoscalingScaleOutPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: ScaleOut
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ServiceAutoscalingTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        Cooldown: 360
+        MetricAggregationType: Average
+        StepAdjustments:
+        - ScalingAdjustment: 1
+          MetricIntervalLowerBound: 0
+  ServiceAutoscalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: application-autoscaling.amazonaws.com
+      Policies:
+        - PolicyName: AutoscalingPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                - application-autoscaling:DescribeScalableTargets
+                - application-autoscaling:DescribeScalingActivities
+                - application-autoscaling:DescribeScalingPolicies
+                - cloudwatch:DescribeAlarms
+                - cloudwatch:PutMetricAlarm
+                - ecs:DescribeServices
+                - ecs:UpdateService
+                Resource: "*"
+  ServiceAutoscalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn:
+      - Service
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub service/${ClusterName}/${ServiceName}
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: 1
+      MaxCapacity: 4
+      RoleARN: !Sub ${ServiceAutoscalingRole.Arn}
+  ServiceLowCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmActions:
+        - !Ref ServiceAutoscalingScaleInPolicy
+      AlarmDescription: indie.ninja API Service Low CPU
+      Namespace: AWS/ECS
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ClusterName
+        - Name: ServiceName
+          Value: !Sub ${ServiceName}
+      MetricName: CPUUtilization
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 20
+      ComparisonOperator: LessThanThreshold
+  ServiceHighCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmActions:
+        - !Ref ServiceAutoscalingScaleOutPolicy
+      AlarmDescription: indie.ninja API Service High CPU
+      Namespace: AWS/ECS
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ClusterName
+        - Name: ServiceName
+          Value: !Sub ${ServiceName}
+      MetricName: CPUUtilization
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 40
+      ComparisonOperator: GreaterThanThreshold
+  ApplicationAutoscalingScaleOutPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      PolicyType: SimpleScaling
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: 1
+      AutoScalingGroupName: !Ref AutoScalingGroupName
+      Cooldown: 600
+  ApplicationAutoscalingScaleInPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      PolicyType: SimpleScaling
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: -1
+      AutoScalingGroupName: !Ref AutoScalingGroupName
+      Cooldown: 600
+  ContainerCapacityAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: ECS Cluster Container Free Capacity
+      AlarmActions:
+        - !Ref ApplicationAutoscalingScaleOutPolicy
+      Namespace: AWS/ECS
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ClusterName
+      MetricName: ContainerCapacity
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: ignore
+  IdleHostCapacityAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: ECS Cluster Container Free Capacity
+      AlarmActions:
+        - !Ref ApplicationAutoscalingScaleInPolicy
+      Namespace: AWS/ECS
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ClusterName
+      MetricName: IdleHostCapacity
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: ignore
+
+  LifecycleHook:
+    Type: AWS::AutoScaling::LifecycleHook
+    Properties:
+      RoleARN: !Sub ${LifecycleHookRole.Arn}
+      AutoScalingGroupName: !Ref AutoScalingGroupName
+      DefaultResult: CONTINUE
+      HeartbeatTimeout: 900
+      LifecycleTransition: autoscaling:EC2_INSTANCE_TERMINATING
+      NotificationTargetARN: !Ref LifecycleHookTopic
+  LifecycleHookRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: autoscaling.amazonaws.com
+      Policies:
+        - PolicyName: LifecycleHookPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+            - Sid: PublishNotifications
+              Action:
+                - sns:Publish
+              Effect: Allow
+              Resource: !Ref LifecycleHookTopic
+  LifecycleHookTopic:
+    Type: AWS::SNS::Topic
+    Properties: {}
+  LifecycleHookSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Sub ${LifecycleHookFunction.Arn}
+      Protocol: lambda
+      TopicArn: !Ref LifecycleHookTopic
+  LifecycleHookPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LifecycleHookFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref LifecycleHookTopic
+  LifecycleFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+      Policies:
+        - PolicyName: LifecycleHookPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Publish
+                Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource:
+                  Ref: LifecycleHookTopic
+              - Sid: CompleteLifecycleAction
+                Effect: Allow
+                Action:
+                  - autoscaling:CompleteLifecycleAction
+                Resource: !Sub arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/${AutoScalingGroupName}
+              - Sid: ListContainerInstances
+                Effect: Allow
+                Action:
+                  - ecs:ListContainerInstances
+                Resource:
+                  Fn::Sub: arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}
+              - Sid: ManageContainerInstances
+                Effect: Allow
+                Action:
+                  - ecs:DescribeContainerInstances
+                  - ecs:UpdateContainerInstancesState
+                Resource: "*"
+                Condition:
+                  ArnEquals:
+                    ecs:cluster:
+                      Fn::Sub: arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}
+              - Sid: ManageLambdaLogs
+                Effect: Allow
+                Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                Resource:
+                  Fn::Sub: ${LifecycleHookFunctionLogGroup.Arn}
+  LifecycleHookFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - LifecycleHookFunctionLogGroup
+    Properties:
+      Role: !Sub ${LifecycleFunctionRole.Arn}
+      FunctionName: !Sub ${StackName}-lifecycleHooks
+      Description: !Sub ${StackName} Autoscaling Lifecycle Hook
+      Environment:
+        Variables:
+          ECS_CLUSTER: !Ref ClusterName
+      Code:
+        ZipFile: |
+          import os, time
+          import json
+          import boto3
+          cluster = os.environ['ECS_CLUSTER']
+          # AWS clients
+          ecs = boto3.client('ecs')
+          sns = boto3.client('sns')
+          autoscaling = boto3.client('autoscaling')
+
+          def handler(event, context):
+            print("Received event %s" % event)
+            for r in event.get('Records'):
+              # Parse SNS message
+              message = json.loads(r['Sns']['Message'])
+              transition, hook = message['LifecycleTransition'], message['LifecycleHookName']
+              group, ec2_instance = message['AutoScalingGroupName'], message['EC2InstanceId']
+              if transition != 'autoscaling:EC2_INSTANCE_TERMINATING':
+                print("Ignoring lifecycle transition %s" % transition)
+                return
+              try:
+                # Get ECS container instance ARN
+                ecs_instance_arns = ecs.list_container_instances(
+                  cluster=cluster
+                )['containerInstanceArns']
+                ecs_instances = ecs.describe_container_instances(
+                  cluster=cluster,
+                  containerInstances=ecs_instance_arns
+                )['containerInstances']
+                # Find ECS container instance with same EC2 instance ID in lifecycle hook message
+                ecs_instance_arn = next((
+                  instance['containerInstanceArn'] for instance in ecs_instances
+                  if instance['ec2InstanceId'] == ec2_instance
+                ), None)
+                if ecs_instance_arn is None:
+                  raise ValueError('Could not locate ECS instance')
+                # Drain instance
+                ecs.update_container_instances_state(
+                  cluster=cluster,
+                  containerInstances=[ecs_instance_arn],
+                  status='DRAINING'
+                )
+                # Check task count on instance every 5 seconds
+                count = 1
+                while count > 0 and context.get_remaining_time_in_millis() > 10000:
+                  status = ecs.describe_container_instances(
+                    cluster=cluster,
+                    containerInstances=[ecs_instance_arn],
+                  )['containerInstances'][0]
+                  count = status['runningTasksCount']
+                  print("Sleeping...")
+                  time.sleep(5)
+                if count == 0:
+                  print("All tasks drained - sending CONTINUE signal")
+                  autoscaling.complete_lifecycle_action(
+                    LifecycleHookName=hook,
+                    AutoScalingGroupName=group,
+                    InstanceId=ec2_instance,
+                    LifecycleActionResult='CONTINUE'
+                  )
+                else:
+                  print("Function timed out - republishing SNS message")
+                  sns.publish(TopicArn=r['Sns']['TopicArn'], Message=r['Sns']['Message'])
+              except Exception as e:
+                print("A failure occurred with exception %s" % e)
+                autoscaling.complete_lifecycle_action(
+                  LifecycleHookName=hook,
+                  AutoScalingGroupName=group,
+                  InstanceId=ec2_instance,
+                  LifecycleActionResult='ABANDON'
+                )
+      Runtime: python3.6
+      MemorySize: 128
+      Timeout: 300
+      Handler: index.handler
+  LifecycleHookFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName:
+        Fn::Sub: /aws/lambda/${AWS::StackName}-lifecycleHooks
+      RetentionInDays: 7
+  EcsCapacityFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - EcsCapacityLogGroup
+    Properties:
+      Role: !Sub ${EcsCapacityRole.Arn}
+      FunctionName: !Sub ${StackName}-ecsCapacity
+      Description: !Sub ${StackName} ECS Capacity Manager
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import datetime
+          ecs = boto3.client('ecs')
+          cloudwatch = boto3.client('cloudwatch')
+          # Max memory and CPU - you would typically inject these as environment variables
+          CONTAINER_MAX_MEMORY = 400
+          CONTAINER_MAX_CPU = 250
+
+          # Get current CPU
+          def check_cpu(instance):
+            return sum(
+              resource['integerValue']
+              for resource in instance['remainingResources']
+              if resource['name'] == 'CPU'
+            )
+          # Get current memory
+          def check_memory(instance):
+            return sum(
+              resource['integerValue']
+              for resource in instance['remainingResources']
+              if resource['name'] == 'MEMORY'
+            )
+          # Lambda entrypoint
+          def handler(event, context):
+            print("Received event %s" % json.dumps(event))
+
+            # STEP 1 - COLLECT RESOURCE DATA
+            cluster = event['detail']['clusterArn']
+            # The maximum CPU availble for an idle ECS instance
+            instance_max_cpu = next(
+              resource['integerValue']
+              for resource in event['detail']['registeredResources']
+              if resource['name'] == 'CPU')
+            # The maximum memory availble for an idle ECS instance
+            instance_max_memory = next(
+              resource['integerValue']
+              for resource in event['detail']['registeredResources']
+              if resource['name'] == 'MEMORY')
+            # Get current container capacity based upon CPU and memory
+            instance_arns = ecs.list_container_instances(
+              cluster=cluster
+            )['containerInstanceArns']
+            instances = [
+              instance for instance in ecs.describe_container_instances(
+                cluster=cluster,
+                containerInstances=instance_arns
+              )['containerInstances']
+              if instance['status'] == 'ACTIVE'
+            ]
+            cpu_capacity = 0
+            memory_capacity = 0
+            for instance in instances:
+              cpu_capacity += int(check_cpu(instance)/CONTAINER_MAX_CPU)
+              memory_capacity += int(check_memory(instance)/CONTAINER_MAX_MEMORY)
+            print("Current container cpu capacity of %s" % cpu_capacity)
+            print("Current container memory capacity of %s" % memory_capacity)
+
+            # STEP 2 - CALCULATE OVERALL CONTAINER CAPACITY
+            container_capacity = min(cpu_capacity, memory_capacity)
+            print("Overall container capacity of %s" % container_capacity)
+
+            # STEP 3 - CALCULATE IDLE HOST COUNT
+            idle_hosts = min(
+              cpu_capacity / int(instance_max_cpu / CONTAINER_MAX_CPU),
+              memory_capacity / int(instance_max_memory / CONTAINER_MAX_MEMORY)
+            )
+            print("Overall idle host capacity of %s" % idle_hosts)
+
+            # STEP 4 - PUBLISH CLOUDWATCH METRICS
+            cloudwatch.put_metric_data(
+              Namespace='AWS/ECS',
+              MetricData=[
+              {
+                'MetricName': 'ContainerCapacity',
+                'Dimensions': [{
+                  'Name': 'ClusterName',
+                  'Value': cluster.split('/')[-1]
+                }],
+                'Timestamp': datetime.datetime.utcnow(),
+                'Value': container_capacity
+              },
+              {
+                'MetricName': 'IdleHostCapacity',
+                'Dimensions': [{
+                  'Name': 'ClusterName',
+                  'Value': cluster.split('/')[-1]
+                }],
+                'Timestamp': datetime.datetime.utcnow(),
+                'Value': idle_hosts
+              }
+            ])
+      Runtime: python3.6
+      MemorySize: 128
+      Timeout: 300
+      Handler: index.handler
+  EcsCapacityLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackName}-ecsCapacity
+      RetentionInDays: 7
+  EcsCapacityPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref EcsCapacityFunction
+      Principal: events.amazonaws.com
+      SourceArn: !Sub ${EcsCapacityEvents.Arn}
+  EcsCapacityEvents:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: !Sub ${StackName} ECS Events Rule
+      EventPattern:
+        source:
+          - aws.ecs
+        detail-type:
+          - ECS Container Instance State Change
+        detail:
+          clusterArn:
+            - !Sub ${ClusterArn}
+      Targets:
+        - Arn: !Sub ${EcsCapacityFunction.Arn}
+          Id: !Sub ${StackName}-ecs-events
+  EcsCapacityRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+      Policies:
+        - PolicyName: EcsCapacityPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: PublishCloudwatchMetrics
+                Effect: Allow
+                Action:
+                  - cloudwatch:putMetricData
+                Resource: "*"
+              - Sid: ListContainerInstances
+                Effect: Allow
+                Action:
+                  - ecs:ListContainerInstances
+                Resource: !Sub ${ClusterArn}
+              - Sid: DescribeContainerInstances
+                Effect: Allow
+                Action:
+                  - ecs:DescribeContainerInstances
+                Resource: "*"
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Sub ${ClusterArn}
+              - Sid: ManageLambdaLogs
+                Effect: Allow
+                Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                Resource: !Sub ${EcsCapacityLogGroup.Arn}
+
+Outputs:
+  Service:
+    Value: !Ref Service

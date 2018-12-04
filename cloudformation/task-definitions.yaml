@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: indie.ninja API
+
+Parameters:
+  DatabaseAddress:
+    Type: String
+
+  ApplicationImageTag:
+    Type: String
+
+  AutoScalingGroupName:
+    Type: String
+
+  ClusterName:
+    Type: String
+
+  ClusterArn:
+    Type: String
+
+  ApplicationEnv:
+    Type: String
+
+  EcrRepositoryNamespace:
+    Type: String
+
+  StackName:
+    Type: String
+
+Resources:
+  ApplicationTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: indie-ninja-api
+      TaskRoleArn: !Sub ${TaskRole.Arn}
+      Volumes:
+        - Name: public
+          Host:
+            SourcePath: /data/public
+      ContainerDefinitions:
+        - Name: indie-ninja-api
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepositoryNamespace}:${ApplicationImageTag}
+          MemoryReservation: 395
+          Cpu: 245
+          MountPoints:
+            - SourceVolume: public
+              ContainerPath: /public
+          Environment:
+            - Name: APP_ENV
+              Value: !Ref ApplicationEnv
+            - Name: DATABASE_HOST
+              Value: !Ref DatabaseAddress
+            - Name: DATABASE_USER
+              Value: postgres
+            - Name: SECRETS
+              Value: indie-ninja-api/secrets
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref AWS::Region
+          Command:
+            - bundle
+            - exec
+            - rackup
+            - --server=puma
+            - --host=0.0.0.0
+            - --port=8000
+          PortMappings:
+            - ContainerPort: 8000
+              HostPort: 0
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /${StackName}/ecs/indie-ninja-api
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: docker
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+          Action:
+            - sts:AssumeRole
+      Policies:
+        - PolicyName: SecretsManagerPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+            - Sid: GetSecrets
+              Effect: Allow
+              Action:
+              - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:indie-ninja-api/*
+            - Sid: DecryptSecrets
+              Effect: Allow
+              Action:
+              - kms:Decrypt
+              Resource: !ImportValue secrets-key
+  MigrateTask:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !Sub ${EcsTaskRunner.Arn}
+      Cluster: !Ref ClusterName
+      TaskDefinition: !Ref MigrateTaskDefinition
+  MigrateTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: indie-ninja-api-migrate
+      TaskRoleArn: !Sub ${TaskRole.Arn}
+      ContainerDefinitions:
+        - Name: migrate
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepositoryNamespace}:${ApplicationImageTag}
+          MemoryReservation: 5
+          Cpu: 5
+          Environment:
+            - Name: APP_ENV
+              Value: !Ref ApplicationEnv
+            - Name: DATABASE_HOST
+              Value: !Ref DatabaseAddress
+            - Name: DATABASE_USER
+              Value: postgres
+            - Name: SECRETS
+              Value: indie-ninja-api/secrets
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref AWS::Region
+          Command:
+            - bundle
+            - exec
+            - rake
+            - db:create
+            - db:migrate
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /${StackName}/ecs/indie-ninja-api
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: docker
+  EcsTaskRunner:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - EcsTaskRunnerLogGroup
+    Properties:
+      FunctionName: !Sub ${StackName}-ecsTasks
+      Description: !Sub ${StackName} ECS Task Runner
+      Handler: index.handler
+      MemorySize: 128
+      Runtime: python3.6
+      Timeout: 300
+      Role: !Sub ${EcsTaskRunnerRole.Arn}
+      Code:
+        ZipFile: |
+          import cfnresponse
+          import boto3
+          client = boto3.client('ecs')
+          def handler(event, context):
+            try:
+              print("Received event %s" % event)
+              if event['RequestType'] == 'Delete':
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, event['PhysicalResourceId'])
+                return
+              tasks = client.run_task(
+                cluster=event['ResourceProperties']['Cluster'],
+                taskDefinition=event['ResourceProperties']['TaskDefinition'],
+                overrides=event['ResourceProperties'].get('Overrides',{}),
+                count=1,
+                startedBy=event['RequestId']
+              )
+              task = tasks['tasks'][0]['taskArn']
+              print("Started ECS task %s" % task)
+              waiter = client.get_waiter('tasks_stopped')
+              waiter.wait(
+                cluster=event['ResourceProperties']['Cluster'],
+                tasks=[task],
+              )
+              result = client.describe_tasks(
+                cluster=event['ResourceProperties']['Cluster'],
+                tasks=[task]
+              )
+              exitCode = result['tasks'][0]['containers'][0]['exitCode']
+              if exitCode > 0:
+                print("###### ECS task is %s" % result)
+                print("ECS task %s failed with exit code %s" % (task, exitCode))
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, task)
+              else:
+                print("ECS task %s completed successfully" % task)
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, task)
+            except Exception as e:
+              print("A failure occurred with exception %s" % e)
+              cfnresponse.send(event, context, cfnresponse.FAILED, {})
+  EcsTaskRunnerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action:
+            - sts:AssumeRole
+      Policies:
+        - PolicyName: EcsTaskRunnerPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+            - Sid: EcsTasks
+              Effect: Allow
+              Action:
+              - ecs:DescribeTasks
+              - ecs:ListTasks
+              - ecs:RunTask
+              Resource: "*"
+              Condition:
+                ArnEquals:
+                  ecs:cluster: !Sub ${ClusterArn}
+            - Sid: ManageLambdaLogs
+              Effect: Allow
+              Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              Resource: !Sub ${EcsTaskRunnerLogGroup.Arn}
+  EcsTaskRunnerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StackName}-ecsTasks
+      RetentionInDays: 7
+
+Outputs:
+  ApplicationTaskDefinitionArn:
+    Value: !Ref ApplicationTaskDefinition
+
+  MigrateTaskArn:
+    Value: !Ref MigrateTask

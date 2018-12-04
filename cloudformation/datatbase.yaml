@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  AutoScalingSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  DatabasePassword:
+    Type: String
+
+  StackName:
+    Type: String
+
+Resources:
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: postgres
+      EngineVersion: 10.5
+      DBInstanceClass: db.t2.micro
+      AllocatedStorage: 20
+      StorageType: gp2
+      MasterUsername: postgres
+      MasterUserPassword: !Sub ${DatabasePassword}
+      DBName: indie_ninja
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      MultiAZ: "false"
+      AvailabilityZone: !Sub ${AWS::Region}b
+      Tags:
+        - Key: Name
+          Value: !Sub ${StackName}-db
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Application Database Subnet Group
+      SubnetIds: !Ref Subnets
+      Tags:
+        - Key: Name
+          Value: !Sub ${StackName}-db-subnet-group
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${StackName} Application Database Security Group
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 192.0.2.0/32
+      Tags:
+        - Key: Name
+          Value: !Sub ${StackName}-db-sg
+  ApplicationToDatabaseIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      GroupId: !Ref DatabaseSecurityGroup
+      SourceSecurityGroupId: !Ref AutoScalingSecurityGroup
+  ApplicationToDatabaseEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      GroupId: !Ref AutoScalingSecurityGroup
+      DestinationSecurityGroupId: !Ref DatabaseSecurityGroup
+
+Outputs:
+  Database:
+    Value: !Ref Database
+
+  DatabaseAddress:
+    Value: !GetAtt Database.Endpoint.Address

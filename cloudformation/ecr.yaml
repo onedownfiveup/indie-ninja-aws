@@ -1,0 +1,30 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: ECR Resources
+
+Parameters:
+  EcrRepositoryNamespace:
+    Type: String
+    Description: Ecr repository namespace
+
+Resources:
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub ${EcrRepositoryNamespace}
+      RepositoryPolicyText:
+        Version: '2008-10-17'
+        Statement:
+        - Sid: RemoteAccountAccess
+          Effect: Allow
+          Principal:
+            AWS: arn:aws:iam::158949774536:root
+            Service: codebuild.amazonaws.com
+          Action:
+          - ecr:GetDownloadUrlForLayer
+          - ecr:BatchGetImage
+          - ecr:BatchCheckLayerAvailability
+
+Outputs:
+  RepositoryId:
+    Value: !Ref Repository

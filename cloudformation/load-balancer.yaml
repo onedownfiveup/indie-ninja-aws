@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  AutoScalingSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  StackName:
+    Type: String
+
+Resources:
+  LoadBalancerHttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Subnets: !Ref Subnets
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value : 30
+      Tags:
+        - Key: Name
+          Value: !Sub ${StackName}-alb
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Application Load Balancer Security Group
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: ${StackName}-alb-sg
+  LoadBalancerToApplicationIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 32768
+      ToPort: 60999
+      GroupId: !Ref AutoScalingSecurityGroup
+      SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+  LoadBalancerToApplicationEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 32768
+      ToPort: 60999
+      GroupId: !Ref LoadBalancerSecurityGroup
+      DestinationSecurityGroupId: !Ref AutoScalingSecurityGroup
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Protocol: HTTP
+      Port: 8000
+      VpcId: !Ref VpcId
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+
+Outputs:
+  TargetGroupArn:
+    Value: !Ref TargetGroup
+
+  LoadBalancer:
+    Value: !Ref LoadBalancer
+
+  LoadBalancerHttpListenerArn:
+    Value: !Ref LoadBalancerHttpListener
+
+  ServiceUrl:
+    Value: !GetAtt LoadBalancer.DNSName
