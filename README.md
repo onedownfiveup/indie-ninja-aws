@@ -9,8 +9,8 @@ This repository contains the code to build the infrastructure for the indie.ninj
 * packer - This directory contains the files and setup for building your base AMI for your ecs task definitions
 * cloudformation - This directory contains the cloudformation stack templates for building the AWS infrastrucutre. 
 
-The code for this repository was inspired by reading: [Docker on Amazon Web Services][http://a.co/d/hvu7Bx1] and also using 
-the [awslabs/ecs-refarch-continuous-deployment][https://github.com/awslabs/ecs-refarch-continuous-deployment] as a resource 
+The code for this repository was inspired by reading: ![Docker on Amazon Web Services][http://a.co/d/hvu7Bx1] and also using 
+the ![awslabs/ecs-refarch-continuous-deployment][https://github.com/awslabs/ecs-refarch-continuous-deployment] as a resource 
 for splitting out templates and building the CodePipeline stack.
 
 
