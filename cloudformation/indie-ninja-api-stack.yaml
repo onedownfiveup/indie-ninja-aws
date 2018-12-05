@@ -38,7 +38,6 @@ Parameters:
 
   TemplateBucket:
     Type: String
-    Default: indie-ninja-cloudformation-templates
     Description: >
       The S3 bucket from which to fetch the templates used by this stack.
 

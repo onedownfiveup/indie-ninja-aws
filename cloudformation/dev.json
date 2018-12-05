@@ -5,6 +5,7 @@
     "ApplicationEnv": "production",
     "EcrRepositoryNamespace": "indie-ninja/indie-ninja-api",
     "EcrRepositoryArn": "arn:aws:ecr:us-east-1:198079243873:repository/indie-ninja/indie-ninja-api",
+    "TemplateBucket": "indie-ninja-cloudformation-templates",
     "GitHubRepo": "indie-ninja-api",
     "GitHubAwsRepo": "indie-ninja-aws",
     "GitHubBranch": "master",
