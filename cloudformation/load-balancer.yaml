@@ -80,6 +80,7 @@ Resources:
       TargetGroupAttributes:
         - Key: deregistration_delay.timeout_seconds
           Value: 30
+      HealthCheckPath: /health_check
 
 Outputs:
   TargetGroupArn:
