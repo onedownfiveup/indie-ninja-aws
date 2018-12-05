@@ -72,6 +72,7 @@ Resources:
               awslogs-group: !Sub /${StackName}/ecs/indie-ninja-api
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: docker
+
   TaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -98,12 +99,14 @@ Resources:
               Action:
               - kms:Decrypt
               Resource: !ImportValue secrets-key
+
   MigrateTask:
     Type: AWS::CloudFormation::CustomResource
     Properties:
       ServiceToken: !Sub ${EcsTaskRunner.Arn}
       Cluster: !Ref ClusterName
       TaskDefinition: !Ref MigrateTaskDefinition
+
   MigrateTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -137,6 +140,7 @@ Resources:
               awslogs-group: !Sub /${StackName}/ecs/indie-ninja-api
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: docker
+
   EcsTaskRunner:
     Type: AWS::Lambda::Function
     DependsOn:
@@ -189,6 +193,7 @@ Resources:
             except Exception as e:
               print("A failure occurred with exception %s" % e)
               cfnresponse.send(event, context, cfnresponse.FAILED, {})
+
   EcsTaskRunnerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -221,6 +226,7 @@ Resources:
               - logs:CreateLogStream
               - logs:PutLogEvents
               Resource: !Sub ${EcsTaskRunnerLogGroup.Arn}
+
   EcsTaskRunnerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:

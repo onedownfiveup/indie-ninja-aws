@@ -53,6 +53,7 @@ Resources:
       DeploymentConfiguration:
         MaximumPercent: 200
         MinimumHealthyPercent: 100
+
   ServiceAutoscalingScaleInPolicy:
     Type: AWS::ApplicationAutoScaling::ScalingPolicy
     Properties:
@@ -66,6 +67,7 @@ Resources:
         StepAdjustments:
         - ScalingAdjustment: -1
           MetricIntervalUpperBound: 0
+
   ServiceAutoscalingScaleOutPolicy:
     Type: AWS::ApplicationAutoScaling::ScalingPolicy
     Properties:
@@ -79,6 +81,7 @@ Resources:
         StepAdjustments:
         - ScalingAdjustment: 1
           MetricIntervalLowerBound: 0
+
   ServiceAutoscalingRole:
     Type: AWS::IAM::Role
     Properties:
@@ -105,6 +108,7 @@ Resources:
                 - ecs:DescribeServices
                 - ecs:UpdateService
                 Resource: "*"
+
   ServiceAutoscalingTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
     DependsOn:
@@ -116,6 +120,7 @@ Resources:
       MinCapacity: 1
       MaxCapacity: 4
       RoleARN: !Sub ${ServiceAutoscalingRole.Arn}
+
   ServiceLowCpuAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -134,6 +139,7 @@ Resources:
       EvaluationPeriods: 3
       Threshold: 20
       ComparisonOperator: LessThanThreshold
+
   ServiceHighCpuAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -152,6 +158,7 @@ Resources:
       EvaluationPeriods: 3
       Threshold: 40
       ComparisonOperator: GreaterThanThreshold
+
   ApplicationAutoscalingScaleOutPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
     Properties:
@@ -160,6 +167,7 @@ Resources:
       ScalingAdjustment: 1
       AutoScalingGroupName: !Ref AutoScalingGroupName
       Cooldown: 600
+
   ApplicationAutoscalingScaleInPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
     Properties:
@@ -168,6 +176,7 @@ Resources:
       ScalingAdjustment: -1
       AutoScalingGroupName: !Ref AutoScalingGroupName
       Cooldown: 600
+
   ContainerCapacityAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -185,6 +194,7 @@ Resources:
       Threshold: 1
       ComparisonOperator: LessThanThreshold
       TreatMissingData: ignore
+
   IdleHostCapacityAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -212,6 +222,7 @@ Resources:
       HeartbeatTimeout: 900
       LifecycleTransition: autoscaling:EC2_INSTANCE_TERMINATING
       NotificationTargetARN: !Ref LifecycleHookTopic
+
   LifecycleHookRole:
     Type: AWS::IAM::Role
     Properties:
@@ -233,15 +244,18 @@ Resources:
                 - sns:Publish
               Effect: Allow
               Resource: !Ref LifecycleHookTopic
+
   LifecycleHookTopic:
     Type: AWS::SNS::Topic
     Properties: {}
+
   LifecycleHookSubscription:
     Type: AWS::SNS::Subscription
     Properties:
       Endpoint: !Sub ${LifecycleHookFunction.Arn}
       Protocol: lambda
       TopicArn: !Ref LifecycleHookTopic
+
   LifecycleHookPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -249,6 +263,7 @@ Resources:
       FunctionName: !Ref LifecycleHookFunction
       Principal: sns.amazonaws.com
       SourceArn: !Ref LifecycleHookTopic
+
   LifecycleFunctionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -299,6 +314,7 @@ Resources:
                 - logs:PutLogEvents
                 Resource:
                   Fn::Sub: ${LifecycleHookFunctionLogGroup.Arn}
+
   LifecycleHookFunction:
     Type: AWS::Lambda::Function
     DependsOn:
@@ -386,6 +402,7 @@ Resources:
       MemorySize: 128
       Timeout: 300
       Handler: index.handler
+
   LifecycleHookFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Delete
@@ -393,6 +410,7 @@ Resources:
       LogGroupName:
         Fn::Sub: /aws/lambda/${AWS::StackName}-lifecycleHooks
       RetentionInDays: 7
+
   EcsCapacityFunction:
     Type: AWS::Lambda::Function
     DependsOn:
@@ -499,12 +517,14 @@ Resources:
       MemorySize: 128
       Timeout: 300
       Handler: index.handler
+
   EcsCapacityLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/lambda/${StackName}-ecsCapacity
       RetentionInDays: 7
+
   EcsCapacityPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -512,6 +532,7 @@ Resources:
       FunctionName: !Ref EcsCapacityFunction
       Principal: events.amazonaws.com
       SourceArn: !Sub ${EcsCapacityEvents.Arn}
+
   EcsCapacityEvents:
     Type: AWS::Events::Rule
     Properties:
@@ -527,6 +548,7 @@ Resources:
       Targets:
         - Arn: !Sub ${EcsCapacityFunction.Arn}
           Id: !Sub ${StackName}-ecs-events
+
   EcsCapacityRole:
     Type: AWS::IAM::Role
     Properties:

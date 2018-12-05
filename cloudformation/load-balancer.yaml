@@ -23,6 +23,7 @@ Resources:
       DefaultActions:
         - TargetGroupArn: !Ref TargetGroup
           Type: forward
+
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -36,6 +37,7 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${StackName}-alb
+
   LoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -50,6 +52,7 @@ Resources:
         - Key: Name
           Value:
             Fn::Sub: ${StackName}-alb-sg
+
   LoadBalancerToApplicationIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -58,6 +61,7 @@ Resources:
       ToPort: 60999
       GroupId: !Ref AutoScalingSecurityGroup
       SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+
   LoadBalancerToApplicationEgress:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
@@ -66,6 +70,7 @@ Resources:
       ToPort: 60999
       GroupId: !Ref LoadBalancerSecurityGroup
       DestinationSecurityGroupId: !Ref AutoScalingSecurityGroup
+
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
