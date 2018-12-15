@@ -183,12 +183,17 @@ Resources:
               Configuration:
                 ActionMode: CREATE_UPDATE
                 Capabilities: CAPABILITY_NAMED_IAM
+                ParameterOverrides: |
+                {
+                  "ApplicationImageTag": {"Fn::GetParam": ["ApplicationVersion", "version.json", "Version"]}
+                }
                 RoleArn: !GetAtt CloudformationDeployRole.Arn
                 StackName: !Ref StackName
                 TemplateConfiguration: DeploymentRepository::cloudformation/dev.json
                 TemplatePath: DeploymentRepository::cloudformation/indie-ninja-api-stack.yaml
               InputArtifacts:
                 - Name: DeploymentRepository
+                - Name: ApplicationVersion
               RunOrder: 1
 
   CloudformationDeployRole:
