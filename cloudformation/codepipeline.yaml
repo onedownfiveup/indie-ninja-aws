@@ -108,7 +108,7 @@ Resources:
         Type: CODEPIPELINE
       Environment:
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/ubuntu-base:14.04
+        Image: aws/codebuild/docker:18.09.0
         Type: LINUX_CONTAINER
         PrivilegedMode: true
         EnvironmentVariables:
@@ -184,9 +184,9 @@ Resources:
                 ActionMode: CREATE_UPDATE
                 Capabilities: CAPABILITY_NAMED_IAM
                 ParameterOverrides: |
-                {
-                  "ApplicationImageTag": {"Fn::GetParam": ["ApplicationVersion", "version.json", "Version"]}
-                }
+                  {
+                    "ApplicationImageTag": {"Fn::GetParam": ["ApplicationVersion", "version.json", "Version"]}
+                  }
                 RoleArn: !GetAtt CloudformationDeployRole.Arn
                 StackName: !Ref StackName
                 TemplateConfiguration: DeploymentRepository::cloudformation/dev.json
