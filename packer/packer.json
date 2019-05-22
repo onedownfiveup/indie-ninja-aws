@@ -53,7 +53,7 @@
       "type": "shell",
       "inline": [
         "sudo yum -y -x docker\\* -x ecs\\* update",
-        "sudo yum -y install aws-cfn-bootstrap awslogs jq"
+        "sudo yum -y install aws-cfn-bootstrap awslogs jq chrony"
       ]
     },
     {
