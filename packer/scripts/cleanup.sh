@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 echo "### Performing final clean-up tasks ###"
-sudo service ecs stop
+sudo stop ecs
 sudo docker system prune -f -a
 sudo service docker stop
 sudo chkconfig docker off

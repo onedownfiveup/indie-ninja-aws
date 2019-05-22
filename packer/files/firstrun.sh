@@ -68,10 +68,12 @@ time_zone = UTC
 EOF
 
 # Start services
-sudo service awslogs start
-sudo chkconfig docker on
-sudo service docker start
-sudo start ecs
+sudo systemctl enable awslogsd.service
+sudo systemctl start awslogsd.service
+sudo systemctl enable docker.service
+sudo systemctl start docker.service
+sudo systemctl enable ecs.service
+sudo systemctl start ecs.service
 
 # Health check
 # Loop until ECS agent has registered to ECS cluster

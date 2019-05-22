@@ -12,8 +12,8 @@
       "secret_key": "{{user `aws_secret_access_key`}}",
       "token": "{{user `aws_session_token`}}",
       "region": "us-east-1",
-      "source_ami": "ami-07eb698ce660402d2",
-      "instance_type": "t2.micro",
+      "source_ami": "ami-095775a2445cb7ff7",
+      "instance_type": "t3.nano",
       "ssh_username": "ec2-user",
       "associate_public_ip_address": "true",
       "ami_name": "indie-ninja-api-{{timestamp}}",
@@ -28,8 +28,8 @@
       "tags": {
         "Name": "Indie ninja API ecs AMI",
         "SourceAMI": "{{ .SourceAMI }}",
-        "DockerVersion": "17.12.1-ce",
-        "ECSAgentVersion": "1.18.0"
+        "DockerVersion": "18.06.1-ce",
+        "ECSAgentVersion": "1.25.3"
       }
     }
   ],
