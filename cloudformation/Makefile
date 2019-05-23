@@ -8,7 +8,7 @@ create-ecr-repo:
 
 create-kms:
 	aws cloudformation deploy --template-file kms.yaml --stack-name indie-ninja-api-kms\
-		--parameter-overrides $(cat dev.json | jq -r '.Parameters|to_entries[]|.key+"="+.value')
+		--parameter-overrides $$(cat dev.json | jq -r '.Parameters|to_entries[]|.key+"="+.value')
 
 deploy/%:
 	aws cloudformation deploy --template-file indie-ninja-api-stack.yaml --stack-name indie-ninja-api-$* \
