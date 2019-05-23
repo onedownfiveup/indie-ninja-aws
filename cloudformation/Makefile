@@ -4,10 +4,10 @@ export DATABSE_PASSWORD ?= $(aws secretsmanager get-random-password \
 --password-length 50 --exclude-characters "/'\"@,")
 
 create-ecr-repo:
-	aws cloudformation deploy --template-file ecr.yaml --stack-name indie-ninja-api-kms
+	aws cloudformation deploy --template-file ecr.yaml --stack-name indie-ninja-api-ecr
 
 create-kms:
-	aws cloudformation deploy --template-file kms.yaml --stack-name indie-ninja-api-ecr \
+	aws cloudformation deploy --template-file kms.yaml --stack-name indie-ninja-api-kms\
 		--parameter-overrides $(cat dev.json | jq -r '.Parameters|to_entries[]|.key+"="+.value')
 
 deploy/%:
