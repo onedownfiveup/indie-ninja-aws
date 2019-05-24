@@ -26,8 +26,7 @@ EOF
 # Write AWS Logs config
 sudo tee /etc/awslogs/awslogs.conf << EOF > /dev/null
 [general]
-state_file = /var/lib/awslogs/agent-state 
- 
+state_file = /var/lib/awslogs/agent-state
 [/var/log/dmesg]
 file = /var/log/dmesg
 log_group_name = ${STACK_NAME}/ec2/${AUTOSCALING_GROUP}/var/log/dmesg
@@ -72,8 +71,11 @@ sudo systemctl enable awslogsd.service
 sudo systemctl start awslogsd.service
 sudo systemctl enable docker.service
 sudo systemctl start docker.service
-sudo systemctl enable ecs.service
-sudo systemctl start ecs.service
+
+# Github Issue: https://github.com/aws/amazon-ecs-agent/issues/1707
+sudo cp /usr/lib/systemd/system/ecs.service /etc/systemd/system/ecs.service
+sudo sed -i '/After=cloud-final.service/d' /etc/systemd/system/ecs.service
+sudo systemctl daemon-reload
 
 # Health check
 # Loop until ECS agent has registered to ECS cluster
