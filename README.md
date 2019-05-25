@@ -59,13 +59,13 @@ amazon-ebs output will be in this color.
     amazon-ebs: Adding tag: "Name": "Packer Builder"
     amazon-ebs: Instance ID: i-0604fb9e6add8ea4b
 ==> amazon-ebs: Waiting for instance (i-0604fb9e6add8ea4b) to become ready...
-
 ```
 
+### AWS Console
+You will need to generate a key pair for you ec2 instances which is referenced in the cluster fomation template located here: https://github.com/onedownfiveup/indie-ninja-aws/blob/master/cloudformation/cluster.yaml#L52 . You can create a keypair by navigating to the EC2 service on the AWS console and the navigating to the `Key Pairs` section located under the `NETWORK & SECURITY` section.
 
 ### CloudFormation
-You should edit the [dev.json](https://github.com/onedownfiveup/indie-ninja-aws/blob/master/cloudformation/dev.json) file and 
-replace with whatever your configuration is. 
+You should edit the [dev.json](https://github.com/onedownfiveup/indie-ninja-aws/blob/master/cloudformation/dev.json) file and replace with whatever your configuration is.
 
 #### Create your AWS Key Management Store
 You can run `make create-kms`
